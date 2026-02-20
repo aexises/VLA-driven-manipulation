@@ -1,6 +1,6 @@
 # Physically-Aware Manipulation Benchmark for Vision-Language-Action Models
 
-**Authors:** Nuriev Kamil, Novikov Egor  
+**Author:** Nuriev Kamil 
 
 ## Overview
 
