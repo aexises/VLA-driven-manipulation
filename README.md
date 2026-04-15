@@ -1,286 +1,160 @@
-# Proposal: Dense Reward Shaping for GRPO-based Training of VLA Models
+# Proposal: Comparing Binary, Dense, and Clipped Dense Rewards for GRPO-based VLA Training
 
 ## 1. Motivation
 
-The VLA training framework in https://arxiv.org/pdf/2509.09674 relies on **binary (sparse) rewards**, which introduces:
+The VLA training framework in **SimpleVLA-RL** (arXiv:2509.09674) relies on **binary (sparse) rewards** — a single 0/1 signal at episode end. This introduces:
 
 - High variance in policy gradient estimates
-- Poor credit assignment over long horizons (vision-language-action trajectories)
+- Poor credit assignment over long-horizon vision-language-action trajectories
 - Sample inefficiency
 
-Meanwhile, https://arxiv.org/pdf/2505.07395 and related works suggest that **dense reward signals can be constructed without altering the optimal policy**, particularly via **potential-based reward shaping (PBRS)** and reward redistribution.
+**ReinboT** (Zhang et al., 2025) demonstrates that **dense reward signals** — providing step-level feedback on sub-goal progress, task progress, smoothness, and terminal success — can substantially improve learning speed and final performance.
 
-Key theoretical result:
-
-> Reward shaping of the form  
-> \( r'(s,a,s') = r(s,a,s') + \gamma \Phi(s') - \Phi(s) \)  
-> preserves optimal policies (policy invariance)  [oai_citation:0‡Next.gr](https://www.next.gr/ai/reinforcement-learning/reward-shaping-in-reinforcement-learning?utm_source=chatgpt.com)
-
-Additionally, dense reward redistribution across tokens or steps can be **equivalent to PBRS** in autoregressive settings  [oai_citation:1‡arXiv](https://arxiv.org/abs/2402.00782?utm_source=chatgpt.com).
+This project compares exactly **three** reward formulations for GRPO-based VLA training.
 
 ---
 
 ## 2. Hypothesis
 
-**Replacing binary rewards in GRPO-based VLA training with a structured dense reward derived via potential-based shaping or reward redistribution will:**
+**Replacing binary rewards in GRPO-based VLA training with dense rewards (from ReinboT) or clipped dense rewards will:**
 
 1. Improve **sample efficiency**
 2. Reduce **variance of gradient estimates**
 3. Enable **better temporal credit assignment**
-4. Preserve the **optimal policy (no bias)**
 
 ---
 
-## 3. Problem Formulation
+## 3. Three Reward Types Under Comparison
 
-### 3.1 Original Setting (from VLA + GRPO)
+### 3.1 Binary (Sparse) Reward — SimpleVLA-RL Baseline
 
-We model VLA training as an MDP:
+The original GRPO setup from SimpleVLA-RL:
 
-- State: \( s_t = (o_t, x_{1:t}) \)  
-  (visual observation + generated tokens/actions)
-- Action: \( a_t \sim \pi_\theta(\cdot | s_t) \)
-- Trajectory: \( \tau = (s_0, a_0, ..., s_T) \)
+$$R(\tau) \in \{0, 1\}$$
 
-Sparse reward:
-\[
-R(\tau) \in \{0,1\}
-\]
+Reward is given only at episode end: 1 if task succeeded, 0 otherwise. All intermediate steps receive zero reward.
 
-GRPO objective:
-\[
-\mathcal{L}_{GRPO}(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t} \log \pi_\theta(a_t|s_t) \cdot \hat{A}_t \right]
-\]
-
-where advantage is computed using trajectory-level reward.
+**Advantages:** Simple, no reward design needed, preserves original optimal policy.
+**Disadvantages:** High variance, poor credit assignment, sample inefficient.
 
 ---
 
-### 3.2 Proposed Dense Reward Formulation
+### 3.2 Dense Reward — ReinboT Formulation
 
-We define a **potential function**:
-\[
-\Phi: \mathcal{S} \rightarrow \mathbb{R}
-\]
+Dense reward from ReinboT (Zhang et al., 2025), as formalized in `deep-research-report.md` Eq. (8):
 
-Construct shaped reward:
-\[
-r'_t = r_t + \gamma \Phi(s_{t+1}) - \Phi(s_t)
-\]
+$$r_t = w_1 r^{\rm sub}_t + w_2 r^{\rm prog}_t + w_3 r^{\rm smooth}_t + w_4 r^{\rm final}_T$$
 
-Since original reward is terminal:
-\[
-r_t =
-\begin{cases}
-R(\tau), & t = T \\
-0, & \text{otherwise}
-\end{cases}
-\]
+| Component | Description |
+|-----------|-------------|
+| $r^{\rm sub}_t$ | Sub-goal reward: proximity to intermediate targets |
+| $r^{\rm prog}_t$ | Task progress: weighted signal based on task stage completion |
+| $r^{\rm smooth}_t$ | Action smoothness: penalty on abrupt action changes ($-\|a_t - a_{t-1}\|^2$) |
+| $r^{\rm final}_T$ | Terminal success: binary 0/1 at episode end |
 
-Thus:
-\[
-r'_t = \gamma \Phi(s_{t+1}) - \Phi(s_t), \quad t < T
-\]
-\[
-r'_T = R(\tau) - \Phi(s_T)
-\]
+Weights $w_i$ are tuned so that component magnitudes are comparable (see ReinboT).
 
-This produces **dense intermediate rewards**.
+**Advantages:** Rich step-level signal, better credit assignment, faster learning.
+**Disadvantages:** Requires reward design; negative components may introduce noise during exploration.
 
 ---
 
-## 4. Constructing the Potential Function
+### 3.3 Clipped Dense Reward — Proposed Variant
 
-We propose three **provably grounded** constructions:
+Same dense reward as 3.2, but with low values clipped:
 
-### 4.1 Value Function-Based (Bootstrapped PBRS)
+$$r^{\rm clipped}_t = \max(r_t, \tau_{\rm clip})$$
 
-\[
-\Phi(s_t) = V_\psi(s_t)
-\]
+where $\tau_{\rm clip} \geq 0$ is a clipping threshold determined experimentally. Candidate values: $\{0, 0.1, 0.2, 0.5\}$.
 
-- Learned critic approximates expected return
-- Equivalent to **bootstrapped reward shaping**  [oai_citation:2‡arXiv](https://arxiv.org/abs/2501.00989?utm_source=chatgpt.com)
+**Rationale:** Clipping low and negative rewards may reduce penalty noise during exploration and stabilize early training.
+**Trade-off:** Breaks strict potential-based shaping invariance; empirical comparison required.
 
 ---
 
-### 4.2 Reward Model Decomposition (Token-level)
+## 4. GRPO Objective
 
-Inspired by dense reward redistribution:
+All three reward types use the same GRPO framework. Cumulative returns:
 
-\[
-R(\tau) = \sum_{t} w_t
-\]
+$$R_{i,t} = \sum_{t'=t}^{T_i} \gamma^{t'-t} r_{i,t'}$$
 
-where:
-- \( w_t \propto \text{importance}(a_t) \)
-- Derived from internal reward model (e.g., attention weights)
+Group normalization:
 
-This is equivalent to PBRS in autoregressive models  [oai_citation:3‡arXiv](https://arxiv.org/abs/2402.00782?utm_source=chatgpt.com)
+$$\hat{R}_{i,t} = \frac{R_{i,t} - \mu}{\sigma}, \quad \mu = \text{mean}(\{R_{j,u}\}), \ \sigma = \text{std}(\{R_{j,u}\})$$
 
----
+Advantage computation:
 
-### 4.3 Goal-distance / Progress Potential
+$$A_{i,t} = \sum_{t'=t}^{T_i} \hat{R}_{i,t'}$$
 
-\[
-\Phi(s_t) = -d(s_t, s_{goal})
-\]
+**Discounted variant:** When $\gamma < 1$, advantages may optionally include discounting in the sum:
 
-- For VLA: distance in **latent semantic/action space**
-- Common dense reward:
-\[
-r_t = -\|s_t - s_{goal}\|
-\]  [oai_citation:4‡Next.gr](https://www.next.gr/ai/reinforcement-learning/reward-shaping-in-reinforcement-learning?utm_source=chatgpt.com)
+$$A_{i,t} = \sum_{t'=t}^{T_i} \gamma^{t'-t} \hat{R}_{i,t'}$$
+
+This option is available for all three reward types and will be tested in ablations.
+
+Policy gradient:
+
+$$\nabla_\theta J(\theta) = \mathbb{E}\left[\frac{1}{G}\sum_{i=1}^G\frac{1}{T_i}\sum_{t=1}^{T_i}\left(A_{i,t}+\beta\left(\frac{\pi_{\rm ref}}{\pi_{\rm old}}-1\right)\right)\nabla_\theta\log\pi_\theta(a_{i,t}|s_{i,t})\right]$$
+
+Full derivation in `deep-research-report.md` Eqs. (1)–(5).
 
 ---
 
-## 5. Modified GRPO Objective
+## 5. Experimental Plan
 
-We redefine advantage using dense rewards:
+### Phase 1: Classic RL Environments (MANDATORY FIRST STEP)
 
-\[
-\hat{A}_t = \sum_{k=t}^{T} \gamma^{k-t} r'_k - V_\psi(s_t)
-\]
+Before VLA tasks, validate all three reward types on simple benchmarks. Each environment supports all three reward types (Binary, Dense, Clipped Dense) for direct comparison:
 
-GRPO becomes:
+- **CartPole-v1** — Binary: survival 0/1; Dense: angle + position penalties; Clipped Dense
+- **MountainCar-v0** — Binary: reach flag 0/1; Dense: distance to goal + velocity; Clipped Dense
+- **Acrobot-v1** — Binary: reach height 0/1; Dense: height progress + angle; Clipped Dense
+- **HalfCheetah-v4 / Ant-v4** — Binary: velocity threshold 0/1; Dense: velocity + smoothness; Clipped Dense
 
-\[
-\mathcal{L}_{Dense-GRPO}(\theta) =
-\mathbb{E}_{\tau} \left[
-\sum_{t} \log \pi_\theta(a_t|s_t) \cdot \hat{A}_t
-\right]
-\]
+**Success criteria:**
+- Dense reward shows ≥15% improvement in sample efficiency over binary
+- Clipped dense demonstrates either: (a) faster convergence than dense, or (b) comparable final performance with lower gradient variance
+- Results statistically significant (p < 0.05, ≥5 seeds)
 
----
+### Phase 2: VLA Manipulation Tasks
 
-## 6. Algorithm
-
-### Dense-GRPO for VLA Training
-Initialize policy πθ, value function Vψ
-
-for each iteration:
-Sample trajectories τ ~ πθ
-for each trajectory:
-    Compute terminal reward R(τ)
-
-    for t in [0, T]:
-        Compute potential Φ(s_t)
-
-    for t in [0, T-1]:
-        r'_t = γ Φ(s_{t+1}) - Φ(s_t)
-
-    r'_T = R(τ) - Φ(s_T)
-
-    Compute returns:
-        G_t = Σ γ^{k-t} r'_k
-
-    Compute advantages:
-        A_t = G_t - Vψ(s_t)
-
-Update θ using GRPO objective
-Update ψ via regression to G_t
----
-
-## 7. Theoretical Properties
-
-### 7.1 Policy Invariance
-
-PBRS guarantees:
-\[
-\pi^*_{original} = \pi^*_{shaped}
-\]
-
-Thus:
-- No reward hacking (under correct Φ)
-- Same optimal behavior  [oai_citation:5‡Emergent Mind](https://www.emergentmind.com/topics/potential-based-reward-shaping?utm_source=chatgpt.com)
+Only after Phase 1 success:
+- LIBERO suite (Spatial, Object, Goal, Long)
+- RoboTwin tasks
+- CALVIN benchmark tasks
+- **SFT only** baseline (supervised fine-tuning without RL) will also be included for VLA tasks
 
 ---
 
-### 7.2 Variance Reduction
+## 6. Expected Outcomes
 
-Dense rewards:
-- Reduce trajectory-level variance
-- Improve gradient signal per timestep
-
----
-
-### 7.3 Credit Assignment
-
-Dense shaping provides:
-- Local gradients for each token/action
-- Better alignment in long-horizon VLA tasks
+| Property | Binary (SimpleVLA-RL) | Dense (ReinboT) | Clipped Dense |
+|----------|----------------------|-----------------|---------------|
+| Sample efficiency | Low | High | Medium–High |
+| Gradient variance | High | Lower | Lowest (potentially) |
+| Credit assignment | Poor | Fine-grained | Fine-grained |
+| Policy invariance | ✓ | ✗ (ReinboT sum ≠ PBRS) | ✗ (empirical) |
+| Implementation complexity | Minimal | Moderate | Moderate |
 
 ---
 
-## 8. Alternatives from Referenced Literature
+## 7. Key Risks
 
-### 8.1 Bootstrapped Reward Shaping
-- Uses learned value function as Φ
-- No manual design required  [oai_citation:6‡arXiv](https://arxiv.org/abs/2501.00989?utm_source=chatgpt.com)
-
----
-
-### 8.2 Potential Landscape Learning (SLOPE)
-- Learns optimistic potential surfaces
-- Addresses sparse-reward flatness  [oai_citation:7‡arXiv](https://arxiv.org/abs/2602.03201?utm_source=chatgpt.com)
+1. Poorly tuned dense reward weights → slow learning or suboptimal policy
+2. Clipping threshold too high → loss of useful negative feedback
+3. Computational overhead from dense reward computation
+4. Overfitting to shaping signal rather than true task objective
 
 ---
 
-### 8.3 State-space Segmentation
-- Decomposes task into subgoals
-- Provides structured potentials  [oai_citation:8‡ScienceDirect](https://www.sciencedirect.com/science/article/pii/S0167739X24001262?utm_source=chatgpt.com)
+## 8. Conclusion
 
----
+This project systematically compares **three** GRPO reward formulations:
 
-### 8.4 Hierarchical / Reachability-based shaping
-- Uses subgoal reachability
-- Useful for long-horizon tasks  [oai_citation:9‡Springer](https://link.springer.com/article/10.1007/s11063-024-11632-x?utm_source=chatgpt.com)
+| # | Type | Source |
+|---|------|--------|
+| 1 | Binary (Sparse) | SimpleVLA-RL (arXiv:2509.09674) |
+| 2 | Dense | ReinboT (Zhang et al., 2025) |
+| 3 | Clipped Dense | This project — clipping threshold determined experimentally |
 
----
-
-## 9. Expected Outcomes
-
-| Property | Binary Reward | Dense PBRS |
-|----------|-------------|-----------|
-| Sample efficiency | Low | High |
-| Variance | High | Lower |
-| Credit assignment | Poor | Fine-grained |
-| Policy correctness | ✓ | ✓ (guaranteed) |
-
----
-
-## 10. Key Risks
-
-1. Poorly chosen Φ → slow learning
-2. Overfitting to shaping signal
-3. Computational overhead (if Φ complex)
-
----
-
-## 11. Experimental Validation Plan
-
-- Compare:
-  - Binary GRPO vs Dense-GRPO
-- Metrics:
-  - Success rate
-  - Sample efficiency
-  - Training stability
-- Ablations:
-  - Φ = value vs learned reward vs heuristic
-
----
-
-## 12. Conclusion
-
-We propose a **principled integration of dense rewards into GRPO** using **potential-based reward shaping**, ensuring:
-
-- Theoretical correctness (policy invariance)
-- Practical gains (efficiency, stability)
-- Compatibility with autoregressive VLA models
-
-This bridges:
-- Sparse RL (VLA paper)
-- Dense reward shaping (2505.07395-style ideas)
-- Modern RLHF/token-level reward redistribution
-
----
+Validation proceeds in two phases: classic RL environments first, then VLA manipulation tasks. Full mathematical formulation and algorithm pseudocode in `deep-research-report.md`. Agent instructions in `agents.md`.
