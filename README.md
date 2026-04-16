@@ -41,7 +41,7 @@ Reward is given only at episode end: 1 if task succeeded, 0 otherwise. All inter
 
 ### 3.2 Dense Reward — ReinboT Formulation
 
-Dense reward from ReinboT (Zhang et al., 2025), as formalized in `deep-research-report.md` Eq. (8):
+Dense reward from ReinboT (Zhang et al., 2025), as formalized in `hypothesis.md`:
 
 $$r_t = w_1 r^{\rm sub}_t + w_2 r^{\rm prog}_t + w_3 r^{\rm smooth}_t + w_4 r^{\rm final}_T$$
 
@@ -96,7 +96,7 @@ Policy gradient:
 
 $$\nabla_\theta J(\theta) = \mathbb{E}\left[\frac{1}{G}\sum_{i=1}^G\frac{1}{T_i}\sum_{t=1}^{T_i}\left(A_{i,t}+\beta\left(\frac{\pi_{\rm ref}}{\pi_{\rm old}}-1\right)\right)\nabla_\theta\log\pi_\theta(a_{i,t}|s_{i,t})\right]$$
 
-Full derivation in `deep-research-report.md` Eqs. (1)–(5).
+Full derivation in `hypothesis.md` Eqs. (1)–(5).
 
 ---
 
@@ -157,4 +157,4 @@ This project systematically compares **three** GRPO reward formulations:
 | 2 | Dense | ReinboT (Zhang et al., 2025) |
 | 3 | Clipped Dense | This project — clipping threshold determined experimentally |
 
-Validation proceeds in two phases: classic RL environments first, then VLA manipulation tasks. Full mathematical formulation and algorithm pseudocode in `deep-research-report.md`. Agent instructions in `agents.md`.
+Validation proceeds in two phases: classic RL environments first, then VLA manipulation tasks. Full mathematical formulation and algorithm pseudocode are documented in `hypothesis.md`. Agent instructions live in `agents.md`.

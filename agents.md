@@ -5,24 +5,24 @@
 This project investigates **integrating dense rewards into Group Relative Policy Optimization (GRPO)** for training Vision-Language-Action (VLA) models on robotic manipulation tasks.
 
 ### Primary References
-- `README.md` — Original proposal: PBRS-based dense reward shaping for GRPO
-- `deep-research-report.md` — Extended research report: detailed mathematical formulation, algorithm pseudocode, experimental plan, and hypothesis testing framework
+- `README.md` — Original proposal for the three-way reward comparison
+- `hypothesis.md` — Canonical mathematical formulation, algorithm pseudocode, experimental plan, and hypothesis testing framework
 
 ### Core Hypothesis
 Replacing binary (sparse) rewards in GRPO-based VLA training with dense rewards (from ReinboT) or clipped dense rewards will:
-1. Improve **sample efficiency** (deep-research-report.md Гипотеза 1)
-2. Reduce **variance of gradient estimates** via group normalization (deep-research-report.md Гипотеза 3)
-3. Enable **better temporal credit assignment** (deep-research-report.md Гипотеза 1)
-4. Dense reward component weights affect trajectory quality and learning speed (deep-research-report.md Гипотеза 2)
+1. Improve **sample efficiency** (`hypothesis.md`, Гипотеза 1)
+2. Reduce **variance of gradient estimates** via group normalization (`hypothesis.md`, Гипотеза 3)
+3. Enable **better temporal credit assignment** (`hypothesis.md`, Гипотеза 1)
+4. Dense reward component weights affect trajectory quality and learning speed (`hypothesis.md`, Гипотеза 2)
 
 ### Reward Types Under Comparison
 This project compares exactly **three** GRPO reward formulations:
 
 1. **Binary (Sparse) Reward** — Original GRPO from SimpleVLA-RL (arXiv:2509.09674). Terminal reward only: $R(\tau) \in \{0, 1\}$ at episode end, zero on all intermediate steps. No shaping, no intermediate signal.
 
-2. **Dense Reward** — Dense reward formulation from ReinboT (Zhang et al., 2025), as specified in deep-research-report.md Eq. (8):
+2. **Dense Reward** — Dense reward formulation from ReinboT (Zhang et al., 2025), as specified in `hypothesis.md`:
    $r_t = w_1 r^{\rm sub}_t + w_2 r^{\rm prog}_t + w_3 r^{\rm smooth}_t + w_4 r^{\rm final}_T$
-   Provides intermediate step-level signal: sub-goal progress, task progress, action smoothness, and terminal success. Full formulation in deep-research-report.md "Определение плотного вознаграждения" and "Сравнение вариантов плотного вознаграждения".
+   Provides intermediate step-level signal: sub-goal progress, task progress, action smoothness, and terminal success. Full formulation is in `hypothesis.md` under "Определение плотного вознаграждения" and "Сравнение вариантов плотного вознаграждения".
 
 3. **Clipped Dense Reward** — Same dense reward as (2), but with low values clipped:
    $r^{\rm clipped}_t = \max(r_t, \tau_{\rm clip})$
@@ -37,7 +37,7 @@ This project compares exactly **three** GRPO reward formulations:
 All work on this project MUST follow this protocol:
 
 ### 1. Hypothesis-Driven Development
-- Every change must be traceable to a **specific hypothesis** from `deep-research-report.md` (Section: "Формулировка тестируемой гипотезы")
+- Every change must be traceable to a **specific hypothesis** from `hypothesis.md` (Section: "Формулировка тестируемой гипотезы")
 - Do NOT implement features or optimizations without linking them to a testable prediction
 - Document which hypothesis each experiment validates
 
@@ -119,7 +119,7 @@ A result is considered **significant** only if:
 ### File Structure (Expected)
 ```
 ├── README.md                      # Original proposal
-├── deep-research-report.md        # Extended mathematical formulation
+├── hypothesis.md                  # Canonical mathematical formulation
 ├── agents.md                      # This file
 └── src/                           # (To be created)
     ├── envs/
@@ -129,7 +129,7 @@ A result is considered **significant** only if:
     ├── algorithms/
     │   ├── grpo_sparse.py         # Baseline GRPO (from SimpleVLA-RL)
     │   ├── grpo_dense.py          # Proposed Dense-GRPO (ReinboT-style)
-    │   ├── grpo_clipped_dense.py  # Clipped Dense GRPO variant (clip at 0)
+    │   ├── grpo_clipped_dense.py  # Clipped Dense GRPO variant (configurable τ_clip)
     │   └── reward_shaping.py      # Dense reward component functions (ReinboT Eq. 8)
     ├── experiments/
     │   ├── run_experiment.py      # Main experiment runner
@@ -227,7 +227,7 @@ writer.close()
 ### Implementation Guidelines
 
 #### 1. Dense Reward Formulation
-Follow deep-research-report.md Equations (1)–(5):
+Follow `hypothesis.md` Equations (1)–(5):
 ```
 R_{i,t} = Σ_{t'=t}^{T_i} γ^{t'-t} r_{i,t'}          (cumulative return)
 Â_{i,t} = Σ_{t'=t}^{T_i} R̂_{i,t'}                    (advantage from normalized returns)
@@ -248,13 +248,13 @@ Both versions are tested in ablations.
 r^{clipped}_t = max(r_t, τ_clip)
 ```
 where:
-- $r_t$ is the dense reward from ReinboT (Zhang et al., 2025), Eq. (8) in deep-research-report.md
+- $r_t$ is the dense reward from ReinboT (Zhang et al., 2025), as formalized in `hypothesis.md`
 - $\tau_{clip}$ is the clipping threshold (configurable; determined experimentally)
 - Candidate values: $\{0, 0.1, 0.2, 0.5\}$
 
 **Important:** Clipping breaks strict PBRS policy invariance guarantee. Document this limitation and rely on empirical comparison.
 
-#### 3. Group Normalization (from deep-research-report.md)
+#### 3. Group Normalization (from `hypothesis.md`)
 ```
 μ = mean({R_{j,u}}), σ = std({R_{j,u}})
 R̂_{i,t} = (R_{i,t} - μ) / σ
@@ -273,15 +273,15 @@ where $r_t(\theta) = \pi_\theta(a_t|s_t) / \pi_{\theta_{old}}(a_t|s_t)$
 ## Documentation Requirements
 
 ### Every Experiment Must Record
-1. **Hypothesis tested** (link to specific section in deep-research-report.md)
+1. **Hypothesis tested** (link to specific section in `hypothesis.md`)
 2. **Configuration:** hyperparameters, environment, seeds, model architecture
 3. **Results:** all metrics (Section 3 above), statistical tests, effect sizes
 4. **Observations:** qualitative notes on training behavior, failure modes
 5. **Conclusion:** hypothesis supported or rejected, with evidence
 
 ### Code Documentation
-- Every function computing rewards, advantages, or gradients MUST include the corresponding equation number from `deep-research-report.md` or `README.md`
-- Example: `# Computes Eq. (1) from deep-research-report.md: R_{i,t} = Σ γ^{t'-t} r_{i,t'}`
+- Every function computing rewards, advantages, or gradients MUST include the corresponding equation number from `hypothesis.md` or `README.md`
+- Example: `# Computes Eq. (1) from hypothesis.md: R_{i,t} = Σ γ^{t'-t} r_{i,t'}`
 
 ---
 
@@ -290,13 +290,13 @@ where $r_t(\theta) = \pi_\theta(a_t|s_t) / \pi_{\theta_{old}}(a_t|s_t)$
 When making implementation or experimental decisions:
 
 ### Priority Order
-1. **Theoretical correctness** — Does this preserve policy invariance? (see README.md §3.3, §6; deep-research-report.md "Смещение")
+1. **Theoretical correctness** — Does this preserve policy invariance? (see README.md §3.3, §6; `hypothesis.md` discussion of bias/invariance)
 2. **Empirical validity** — Is this supported by ablation results?
 3. **Reproducibility** — Can another agent replicate this exactly?
 4. **Simplicity** — Is this the minimal implementation that tests the hypothesis?
 
 ### When in Doubt
-- Refer to `deep-research-report.md` mathematical formulation
+- Refer to `hypothesis.md` mathematical formulation
 - Default to the simplest version that tests the core hypothesis
 - Document assumptions explicitly
 - Ask the user before making architectural decisions
@@ -330,11 +330,11 @@ Before committing any work:
 | Concept | Source |
 |---------|--------|
 | Binary reward (GRPO baseline) | SimpleVLA-RL (arXiv:2509.09674) |
-| Dense reward formulation | ReinboT — Zhang et al., 2025; deep-research-report.md Eq. (8) |
+| Dense reward formulation | ReinboT — Zhang et al., 2025; `hypothesis.md` |
 | Clipped dense reward | agents.md (this file) — clipping threshold determined experimentally |
-| GRPO algorithm | deep-research-report.md "Алгоритм GRPO с плотным вознаграждением" |
-| Group normalization | deep-research-report.md Eqs. (1)–(3) |
-| GRPO objective & gradient | deep-research-report.md Eqs. (4)–(5); Shao et al., 2024 |
-| Discounted advantage variant | deep-research-report.md (advantage with γ-discount option) |
+| GRPO algorithm | `hypothesis.md` "Алгоритм GRPO с плотным вознаграждением" |
+| Group normalization | `hypothesis.md` Eqs. (1)–(3) |
+| GRPO objective & gradient | `hypothesis.md` Eqs. (4)–(5); Shao et al., 2024 |
+| Discounted advantage variant | `hypothesis.md` (advantage with γ-discount option) |
 | Phase 1 classic RL validation | agents.md "Phased Experimental Approach" (this file) |
 | SFT baseline (Phase 2) | agents.md (this file) |
