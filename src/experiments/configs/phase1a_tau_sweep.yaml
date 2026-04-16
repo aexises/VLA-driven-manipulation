@@ -1,0 +1,8 @@
+{
+  "phase": "phase1a",
+  "envs": ["CartPole-v1", "MountainCar-v0", "Acrobot-v1"],
+  "reward_types": ["clipped_dense"],
+  "seeds": [11, 22, 33, 44, 55],
+  "tau_clip_candidates": [0.0, 0.1, 0.2, 0.5],
+  "total_iterations": 10
+}

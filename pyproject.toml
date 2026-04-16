@@ -3,9 +3,11 @@ name = "vla-driven-manipulation"
 version = "0.1.0"
 description = "Phase 1 GRPO reward validation on classic RL benchmarks."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
   "gymnasium>=0.29",
+  "imageio>=2.34",
+  "matplotlib>=3.8",
   "numpy>=1.26",
   "pandas>=2.2",
   "PyYAML>=6.0",
@@ -18,8 +20,10 @@ dependencies = [
 mujoco = [
   "gymnasium[mujoco]>=0.29",
 ]
+dev = [
+  "pytest>=8.0",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
-

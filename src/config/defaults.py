@@ -46,7 +46,8 @@ def make_phase1_experiment_config(
         tau_clip=tau_clip,
         success_threshold=CONTINUOUS_SUCCESS_THRESHOLDS.get(env_name),
     )
-    experiment_name = f"{phase}-{env_name.lower().replace('-', '_')}-{reward_type}"
+    tau_suffix = f"-tau{tau_clip:.2f}".replace(".", "p") if reward_type == "clipped_dense" else ""
+    experiment_name = f"{phase}-{env_name.lower().replace('-', '_')}-{reward_type}{tau_suffix}"
     return ExperimentConfig(
         env=EnvConfig(name=env_name, phase=phase, seed=seed),
         reward=reward,
@@ -55,4 +56,3 @@ def make_phase1_experiment_config(
         seeds=list(PHASE1_SEEDS),
         total_iterations=total_iterations,
     )
-

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from src.algorithms.grpo_trainer import GRPOTrainer
+from src.analysis.phase1_report import build_phase1_report
 from src.analysis.metrics import compute_sample_efficiency
 from src.config import (
     PHASE1A_ENVS,
@@ -24,21 +25,28 @@ def expand_phase_matrix(matrix_config: dict[str, Any]) -> list:
     envs = list(matrix_config["envs"])
     reward_types = list(matrix_config["reward_types"])
     seeds = list(matrix_config["seeds"])
-    tau_clip = float(matrix_config.get("tau_clip", 0.0))
+    tau_candidates = matrix_config.get("tau_clip_candidates")
+    default_tau = float(matrix_config.get("tau_clip", 0.0))
     total_iterations = int(matrix_config.get("total_iterations", 10))
     configs = []
     for env_name in envs:
         for reward_type in reward_types:
+            tau_values = (
+                [float(value) for value in tau_candidates]
+                if reward_type == "clipped_dense" and tau_candidates
+                else [default_tau]
+            )
             for seed in seeds:
-                configs.append(
-                    make_phase1_experiment_config(
-                        env_name=env_name,
-                        reward_type=reward_type,
-                        seed=seed,
-                        tau_clip=tau_clip,
-                        total_iterations=total_iterations,
+                for tau_clip in tau_values:
+                    configs.append(
+                        make_phase1_experiment_config(
+                            env_name=env_name,
+                            reward_type=reward_type,
+                            seed=seed,
+                            tau_clip=tau_clip,
+                            total_iterations=total_iterations,
+                        )
                     )
-                )
     return configs
 
 
@@ -59,19 +67,24 @@ def write_generated_configs(configs, output_dir: Path) -> None:
 
     output_dir.mkdir(parents=True, exist_ok=True)
     for config in configs:
+        tau_suffix = (
+            f"_tau{config.reward.tau_clip:.2f}".replace(".", "p")
+            if config.reward.reward_type == "clipped_dense"
+            else ""
+        )
         file_name = (
             f"{config.env.phase}_{config.env.name.lower().replace('-', '_')}_"
-            f"{config.reward.reward_type}_seed{config.env.seed}.yaml"
+            f"{config.reward.reward_type}{tau_suffix}_seed{config.env.seed}.yaml"
         )
         save_experiment_config(config, output_dir / file_name)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", required=True, help="Path to a phase matrix YAML/JSON config.")
+    parser.add_argument("--config", help="Path to a phase matrix YAML/JSON config.")
     parser.add_argument(
         "--mode",
-        choices=["generate-configs", "run-matrix"],
+        choices=["generate-configs", "run-matrix", "analyze-results"],
         default="generate-configs",
         help="Generate per-run configs or execute the matrix directly.",
     )
@@ -80,8 +93,20 @@ def main() -> None:
         default="results/generated-configs",
         help="Where to write generated per-run configs.",
     )
+    parser.add_argument(
+        "--results-root",
+        default="results",
+        help="Results root for aggregate analysis.",
+    )
     args = parser.parse_args()
 
+    if args.mode == "analyze-results":
+        report = build_phase1_report(args.results_root, args.output_dir)
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        return
+
+    if not args.config:
+        parser.error("--config is required for generate-configs and run-matrix modes.")
     matrix = load_yaml_like(args.config)
     configs = expand_phase_matrix(matrix)
     if args.mode == "generate-configs":
@@ -104,4 +129,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

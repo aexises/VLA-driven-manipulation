@@ -6,10 +6,11 @@ import csv
 import json
 import subprocess
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from src.analysis.plot_results import save_run_plots
 from src.config.io import save_experiment_config
 from src.config.types import ExperimentConfig
 
@@ -58,7 +59,7 @@ class ExperimentLogger:
     """Persist scalars, configs, summaries, and experiment index entries."""
 
     def __init__(self, config: ExperimentConfig) -> None:
-        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         run_label = f"{config.logging.run_id}_{timestamp}"
         run_dir = Path(config.logging.runs_dir) / config.logging.experiment_name / run_label
         results_dir = Path(config.logging.results_dir) / config.logging.experiment_name / run_label
@@ -146,10 +147,11 @@ class ExperimentLogger:
         summary_with_metadata = {
             **summary,
             "git_hash": _git_hash(),
-            "timestamp_utc": datetime.now(UTC).isoformat(),
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "hypothesis_ref": config.hypothesis_ref,
             "env_name": config.env.name,
             "reward_type": config.reward.reward_type,
+            "tau_clip": config.reward.tau_clip,
             "seed": config.env.seed,
         }
         self.paths.summary_json_path.write_text(
@@ -161,6 +163,10 @@ class ExperimentLogger:
                 json.dumps(raw_trajectories, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
+        try:
+            save_run_plots(self.paths.results_dir)
+        except Exception:  # pragma: no cover - plotting should not break experiment completion
+            pass
         index_path = Path(config.logging.results_dir) / "EXPERIMENTS.md"
         if index_path.exists():
             with index_path.open("a", encoding="utf-8") as handle:
@@ -172,4 +178,3 @@ class ExperimentLogger:
                 )
         self._metrics_file.close()
         self.writer.close()
-

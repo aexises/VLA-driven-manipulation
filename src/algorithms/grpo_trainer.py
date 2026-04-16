@@ -70,6 +70,7 @@ class GRPOTrainer:
         self.logger = ExperimentLogger(config)
         self.device = torch.device(config.device)
         _seed_everything(config.env.seed)
+        self._episode_counter = 0
         self.policy = self._build_policy().to(self.device)
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=config.grpo.learning_rate)
 
@@ -89,7 +90,9 @@ class GRPOTrainer:
     def collect_episode(self) -> EpisodeSample:
         """Roll out one episode and transform rewards using the configured protocol."""
 
-        observation, _ = self.env.reset(seed=self.config.env.seed)
+        episode_seed = self.config.env.seed + self._episode_counter
+        self._episode_counter += 1
+        observation, _ = self.env.reset(seed=episode_seed)
         observations: list[np.ndarray] = []
         actions: list[np.ndarray | int | float] = []
         old_log_probs: list[float] = []
@@ -242,4 +245,3 @@ class GRPOTrainer:
         }
         self.logger.finalize(self.config, summary=summary, raw_trajectories=raw_trajectories)
         return summary
-
