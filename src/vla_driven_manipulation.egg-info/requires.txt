@@ -1,0 +1,15 @@
+gymnasium>=0.29
+imageio>=2.34
+matplotlib>=3.8
+numpy>=1.26
+pandas>=2.2
+PyYAML>=6.0
+scipy>=1.13
+tensorboard>=2.16
+torch>=2.2
+
+[dev]
+pytest>=8.0
+
+[mujoco]
+gymnasium[mujoco]>=0.29
